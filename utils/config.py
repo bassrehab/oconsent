@@ -134,3 +134,4 @@ class Config:
                 current[part] = {}
             current = current[part]
         current[parts[-1]] = value
+        
