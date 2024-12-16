@@ -1,3 +1,4 @@
+# Python
 __pycache__/
 *.py[cod]
 *.class
@@ -18,10 +19,24 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Hardhat
+contracts/cache/
+contracts/artifacts/
+
+# Environment
 .env
 .venv
 env/
 venv/
 ENV/
+
+# IDE
 .idea/
 .vscode/
+*.swp
+*.swo

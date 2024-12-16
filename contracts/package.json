@@ -1,0 +1,14 @@
+{
+  "name": "oconsent-contracts",
+  "version": "1.0.0",
+  "description": "Smart contracts for OConsent protocol",
+  "scripts": {
+    "test": "hardhat test",
+    "compile": "hardhat compile"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^3.0.0",
+    "@openzeppelin/contracts": "^4.9.0",
+    "hardhat": "^2.17.0"
+  }
+}
