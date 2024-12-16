@@ -227,11 +227,17 @@ describe("ConsentRegistry", function () {
         createdAt: currentTime
       };
 
-      // Add new purpose and verify the event emission
-      await expect(registry.connect(processor).addPurpose(agreement.id, newPurpose))
-        .to.emit(registry, "PurposeAdded")
-        .withArgs(agreement.id, newPurpose.id);
+      // We'll get the current block timestamp
+      const blockTimestamp = await time.latest();
+
+      // Add new purpose
+      const tx = await registry.connect(processor).addPurpose(agreement.id, newPurpose);
       
+      // Verify the event emission with all three parameters
+      await expect(tx)
+        .to.emit(registry, "PurposeAdded")
+        .withArgs(agreement.id, newPurpose.id, blockTimestamp + 1); // +1 because the transaction will be in the next block
+
       // Verify the stored data
       const storedAgreement = await registry.getAgreement(agreement.id);
       expect(storedAgreement.purposes.length).to.equal(2);
@@ -241,6 +247,7 @@ describe("ConsentRegistry", function () {
       expect(storedAgreement.purposes[1].retentionPeriod).to.equal(newPurpose.retentionPeriod);
     });
 
+    
     it("Should only allow processor to add purposes", async function () {
         const currentTime = await time.latest();
         const agreement = {
