@@ -16,24 +16,29 @@ contract ConsentVerifier {
         string memory purposeId,
         address processor
     ) public view returns (bool) {
-        ConsentRegistry.ConsentAgreement memory agreement = registry.getAgreement(agreementId);
-        
-        // Check basic validity
-        if (agreement.processor != processor) return false;
-        if (keccak256(bytes(agreement.status)) != keccak256(bytes("active"))) return false;
-        if (block.timestamp < agreement.validFrom) return false;
-        if (agreement.validUntil > 0 && block.timestamp > agreement.validUntil) return false;
-        
-        // Check purpose
-        bool purposeFound = false;
-        for (uint i = 0; i < agreement.purposes.length; i++) {
-            if (keccak256(bytes(agreement.purposes[i].id)) == keccak256(bytes(purposeId))) {
-                purposeFound = true;
-                break;
+        // Try to get agreement data, return false if it doesn't exist
+        try registry.getAgreement(agreementId) returns (
+            ConsentRegistry.ConsentAgreement memory agreement
+        ) {
+            // Check basic validity
+            if (agreement.processor != processor) return false;
+            if (keccak256(bytes(agreement.status)) != keccak256(bytes("active"))) return false;
+            if (block.timestamp < agreement.validFrom) return false;
+            if (agreement.validUntil > 0 && block.timestamp > agreement.validUntil) return false;
+            
+            // Check purpose
+            bool purposeFound = false;
+            for (uint i = 0; i < agreement.purposes.length; i++) {
+                if (keccak256(bytes(agreement.purposes[i].id)) == keccak256(bytes(purposeId))) {
+                    purposeFound = true;
+                    break;
+                }
             }
+            
+            return purposeFound;
+        } catch {
+            return false;
         }
-        
-        return purposeFound;
     }
     
     function getPurposeDetails(
