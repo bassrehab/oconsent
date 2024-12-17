@@ -126,6 +126,12 @@ contract ConsentRegistry is Ownable, Pausable {
         string memory timestampProof
     ) public whenNotPaused agreementExists(id) onlyParticipant(id) returns (bool) {
         ConsentAgreement storage agreement = agreements[id];
+
+        if (keccak256(bytes(agreement.status)) == keccak256(bytes("revoked")) && 
+            keccak256(bytes(status)) == keccak256(bytes("active"))) {
+            revert("Cannot reactivate revoked agreement");
+        }
+
         agreement.status = status;
         agreement.proofId = proofId;
         agreement.timestampProof = timestampProof;
