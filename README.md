@@ -3,7 +3,7 @@
 Open Consent Protocol implementation in Python with Ethereum smart contracts.
 
 ## Structure
-```
+
 ```
 oconsent/
 ├── oconsent/                     # Main package directory
