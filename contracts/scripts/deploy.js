@@ -8,7 +8,16 @@ async function main() {
     const ConsentRegistry = await ethers.getContractFactory("ConsentRegistry");
     const registry = await ConsentRegistry.deploy();
     await registry.waitForDeployment();
-    console.log("ConsentRegistry deployed to:", await registry.getAddress());
+    const registryAddress = await registry.getAddress();
+    console.log("ConsentRegistry deployed to:", registryAddress);
+
+    // Write address to file for tests
+    const fs = require('fs');
+    fs.writeFileSync(
+        '../.test-contract-address',
+        registryAddress
+    );
+
 
     // Deploy Verifier
     const ConsentVerifier = await ethers.getContractFactory("ConsentVerifier");

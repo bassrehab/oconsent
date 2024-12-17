@@ -41,4 +41,6 @@ ENV/
 *.swp
 *.swo
 
+.test-contract-address
+
 TODO.md

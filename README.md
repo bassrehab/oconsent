@@ -169,3 +169,36 @@ Smart contract tests:
 cd contracts
 npx hardhat test
 ```
+
+### Run only unit tests
+```bash
+pytest -v -m "not integration"
+```
+
+### Run only integration tests
+```bash
+pytest -v -m integration
+```
+
+### Run integration tests with custom Ethereum provider
+```bash
+pytest -v -m integration --eth-provider="http://localhost:8545"
+```
+
+
+### Run integration tests with specific contract
+```bash
+pytest -v -m integration --contract-address="0x1234..."
+```
+
+
+### Run all tests
+```bash
+pytest -v
+```
+
+### or, run integration tests with a local Hardhat node (script provided):
+
+```bash
+./run_integration_tests.sh
+```
