@@ -2,6 +2,8 @@
 
 Open Consent Protocol implementation in Python with Ethereum smart contracts.
 
+> If you are looking for Usage and setup docs, go to `./docs/build/index.html` (open in browser) or follow steps in README_DOCS_BUILD.md to generate new Sphinx docs. Docs may also be found at https://docs.oconsent.io
+
 ## Structure
 
 ```
@@ -202,3 +204,9 @@ pytest -v
 ```bash
 ./run_integration_tests.sh
 ```
+
+## Contributing
+Seee [CONTRIBUTING.md](./CONTRIBUTING.md)
+
+## Author
+Subhadip Mitra, contact@subhadipmitra.com
