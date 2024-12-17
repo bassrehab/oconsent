@@ -1,0 +1,15 @@
+pip>=21.1
+bump2version>=1.0.1
+wheel>=0.37.1
+watchdog>=2.1.9
+flake8>=4.0.1
+tox>=3.24.0
+coverage>=6.2
+twine>=3.8.0
+pytest>=6.2.5
+pytest-runner>=5.3.1
+black>=22.3.0
+isort>=5.10.1
+pre-commit>=2.17.0
+sphinx>=4.4.0
+sphinx-rtd-theme>=1.0.0
