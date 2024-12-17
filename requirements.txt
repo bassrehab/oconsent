@@ -1,0 +1,17 @@
+# Ethereum/Web3 dependencies
+web3>=6.0.0
+eth-typing>=3.0.0
+eth-utils>=2.1.0
+
+# Testing dependencies
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-asyncio>=0.21.0
+pytest-mock>=3.10.0
+
+# Other package dependencies
+click>=8.0.0
+python-dateutil>=2.8.2
+requests>=2.25.0
+pycryptodome>=3.15.0
+ipfsapi>=0.4.4
