@@ -34,6 +34,7 @@ MOCK_ABI = {
 }
 
 
+
 @pytest.fixture
 def mock_contract():
     contract = Mock()
@@ -64,6 +65,13 @@ def mock_contract():
     
     return contract
 
+
+class MockTransactionReceipt:
+    def __init__(self):
+        # Create a bytes object that will be converted to a proper hex string
+        self.transactionHash = bytes.fromhex('1234' + '00' * 30)
+
+
 @pytest.fixture
 def ethereum_client(mock_contract):
     with patch('web3.Web3.HTTPProvider'), \
@@ -83,11 +91,11 @@ def ethereum_client(mock_contract):
         client.web3.eth.account = Mock()
         client.web3.eth.get_transaction_count = Mock(return_value=1)
         
-        # Set up transaction hash in the correct format
-        tx_hash = '0x' + '00' * 32
-        client.web3.eth.send_raw_transaction = Mock(return_value=bytes.fromhex('00' * 32))
+        # Set up transaction-related mocks with proper hex prefixes
+        mock_tx_hash = bytes.fromhex('1234' + '00' * 30)
+        client.web3.eth.send_raw_transaction = Mock(return_value=mock_tx_hash)
         client.web3.eth.wait_for_transaction_receipt = Mock(
-            return_value=Mock(transactionHash=bytes.fromhex('00' * 32))
+            return_value=MockTransactionReceipt()
         )
         
         # Setup account methods
@@ -95,7 +103,7 @@ def ethereum_client(mock_contract):
         account.address = "0x0000000000000000000000000000000000000000"
         client.web3.eth.account.from_key = Mock(return_value=account)
         client.web3.eth.account.sign_transaction = Mock(
-            return_value=Mock(rawTransaction=bytes.fromhex('00' * 32))
+            return_value=Mock(rawTransaction=mock_tx_hash)
         )
         
         # Set other required attributes
@@ -110,7 +118,6 @@ def ethereum_client(mock_contract):
 class TestEthereumClient:
     def test_store_agreement(self, ethereum_client):
         """Test storing agreement on blockchain"""
-        # Setup mock agreement
         agreement = Mock()
         agreement.id = "test-id"
         agreement.subject_id = "test-subject"
@@ -125,8 +132,8 @@ class TestEthereumClient:
 
         tx_hash = ethereum_client.store_agreement(agreement)
         assert isinstance(tx_hash, str)
-        assert tx_hash.startswith('0x')
-        assert len(tx_hash) == 66  # '0x' + 64 hex chars
+        assert tx_hash.startswith('0x'), f"Expected hash to start with '0x', got: {tx_hash}"
+        assert len(tx_hash) == 66, f"Expected hash length 66, got length {len(tx_hash)}"
 
 
     def test_get_agreement(self, ethereum_client):
@@ -138,8 +145,11 @@ class TestEthereumClient:
 
     def test_error_handling(self, ethereum_client):
         """Test error handling"""
-        # Mock the contract call to raise an exception
-        ethereum_client.contract.functions.getAgreement.return_value.call.side_effect = Exception("Web3 error")
+        class Web3Error(Exception):
+            pass
+            
+        # Mock the contract call to raise a Web3 error
+        ethereum_client.contract.functions.getAgreement.side_effect = Web3Error("Web3 error")
         
         # The exception should be wrapped in a BlockchainError
         with pytest.raises(BlockchainError) as exc_info:
@@ -163,7 +173,6 @@ class TestEthereumClient:
 
         tx_hash = ethereum_client.update_agreement(agreement)
         assert isinstance(tx_hash, str)
-        assert tx_hash.startswith('0x')
-        assert len(tx_hash) == 66  # '0x' + 64 hex chars
-
+        assert tx_hash.startswith('0x'), f"Expected hash to start with '0x', got: {tx_hash}"
+        assert len(tx_hash) == 66, f"Expected hash length 66, got length {len(tx_hash)}"
         
