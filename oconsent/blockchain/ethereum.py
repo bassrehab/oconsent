@@ -80,12 +80,15 @@ class EthereumClient:
     
     def get_agreement(self, agreement_id: str) -> Optional['ConsentAgreement']:
         """Retrieves a consent agreement from the blockchain."""
-        agreement_data = self.contract.functions.getAgreement(agreement_id).call()
-        if not agreement_data:
-            return None
-            
-        # Convert blockchain data back to ConsentAgreement object
-        return self._deserialize_agreement(agreement_data)
+        try:
+            agreement_data = self.contract.functions.getAgreement(agreement_id).call()
+            if not agreement_data:
+                return None
+                
+            # Convert blockchain data back to ConsentAgreement object
+            return self._deserialize_agreement(agreement_data)
+        except Exception as e:
+            raise BlockchainError(f"Failed to retrieve consent agreement: {str(e)}")
     
     def update_agreement(self, agreement: 'ConsentAgreement') -> str:
         """Updates an existing consent agreement on the blockchain."""
