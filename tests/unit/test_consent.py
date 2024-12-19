@@ -14,18 +14,37 @@ def mock_ethereum_client():
     return client
 
 @pytest.fixture
-def consent_manager(mock_ethereum_client):
-    return ConsentManager(blockchain_client=mock_ethereum_client)
+def mock_proof_generator():
+    generator = Mock()
+    generator.generate_consent_proof.return_value = "proof123"
+    generator.verify_consent_proof.return_value = True
+    return generator
+
+@pytest.fixture
+def mock_timestamp_service():
+    service = Mock()
+    service.timestamp.return_value = "timestamp123"
+    service.verify_timestamp.return_value = True
+    return service
+
+@pytest.fixture
+def consent_manager(mock_ethereum_client, mock_proof_generator, mock_timestamp_service):
+    return ConsentManager(
+        blockchain_client=mock_ethereum_client,
+        proof_generator=mock_proof_generator,
+        timestamp_service=mock_timestamp_service
+    )
 
 @pytest.fixture
 def sample_purpose():
-    return {
-        "id": "purpose-1",
-        "name": "Analytics",
-        "description": "Data analysis",
-        "retention_period": 2592000,  # 30 days
-        "created_at": datetime.utcnow()
-    }
+    current_time = datetime.utcnow()
+    return ConsentPurpose(
+        id="purpose-1",
+        name="Analytics",
+        description="Data analysis",
+        retention_period=2592000,  # 30 days
+        created_at=current_time
+    )
 
 @pytest.fixture
 def sample_agreement_data(sample_purpose):
@@ -47,6 +66,8 @@ class TestConsentManager:
         assert agreement.processor_id == sample_agreement_data["processor_id"]
         assert len(agreement.purposes) == 1
         assert agreement.status == "active"
+        assert agreement.proof_id == "proof123"
+        assert agreement.timestamp_proof == "timestamp123"
 
     def test_create_agreement_invalid_dates(self, consent_manager, sample_agreement_data):
         """Test agreement creation with invalid dates"""
@@ -70,8 +91,13 @@ class TestConsentManager:
 
     def test_verify_consent_expired(self, consent_manager, mock_ethereum_client, sample_agreement_data):
         """Test consent verification for expired agreement"""
-        # Create expired agreement
-        sample_agreement_data["valid_until"] = datetime.utcnow() - timedelta(days=1)
+        # Set both valid_from and valid_until in the past
+        past_time = datetime.utcnow() - timedelta(days=2)  # 2 days ago
+        expired_time = past_time + timedelta(days=1)       # 1 day ago
+        
+        sample_agreement_data["valid_from"] = past_time
+        sample_agreement_data["valid_until"] = expired_time
+        
         agreement = consent_manager.create_agreement(**sample_agreement_data)
         mock_ethereum_client.get_agreement.return_value = agreement
 
@@ -90,7 +116,6 @@ class TestConsentManager:
         revoked_agreement = consent_manager.revoke_agreement(agreement.id)
         assert revoked_agreement.status == "revoked"
 
-        # Verify consent is invalid after revocation
         mock_ethereum_client.get_agreement.return_value = revoked_agreement
         is_valid = consent_manager.verify_consent(
             agreement_id=agreement.id,
@@ -98,4 +123,3 @@ class TestConsentManager:
             processor_id="processor-456"
         )
         assert is_valid is False
-        

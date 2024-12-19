@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional
 import uuid
+from oconsent.utils.errors import ValidationError
 
 @dataclass
 class ConsentPurpose:
@@ -46,6 +47,10 @@ class ConsentManager:
         metadata: Optional[Dict] = None
     ) -> ConsentAgreement:
         """Creates a new consent agreement."""
+        # Add date validation
+        if valid_until and valid_from >= valid_until:
+            raise ValidationError("valid_from must be before valid_until")
+
         agreement = ConsentAgreement(
             id=str(uuid.uuid4()),
             subject_id=subject_id,

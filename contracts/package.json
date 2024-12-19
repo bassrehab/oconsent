@@ -8,9 +8,17 @@
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^3.0.0",
-    "@openzeppelin/contracts": "^4.9.6",
-    "dotenv": "^16.4.7",
+    "@openzeppelin/contracts": "^4.9.0",
+    "glob": "^11.0.0",
     "hardhat": "^2.17.0",
-    "hardhat-gas-reporter": "^2.2.2"
+    "hardhat-gas-reporter": "1.0.10",
+    "lru-cache": "^10.0.1"
+  },
+  "resolutions": {
+    "glob": "^11.0.0",
+    "inflight": "npm:lru-cache@^10.0.1"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7"
   }
 }

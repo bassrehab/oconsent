@@ -1,9 +1,9 @@
-# oconsent/blockchain/ethereum.py
-
 from eth_typing import Address
 from web3 import Web3
 from typing import Dict, List, Optional
 import json
+from ..utils.errors import BlockchainError  
+
 
 class EthereumClient:
     """Handles interactions with Ethereum blockchain."""
@@ -12,21 +12,33 @@ class EthereumClient:
         self,
         provider_url: str,
         contract_address: str,
-        private_key: Optional[str] = None
+        private_key: Optional[str] = None,
+        contract_abi: Optional[Dict] = None
     ):
-        self.web3 = Web3(Web3.HTTPProvider(provider_url))
-        self.contract_address = Address(bytes.fromhex(contract_address.replace('0x', '')))
-        self.private_key = private_key
-        
-        # Load contract ABI
-        with open('contracts/ConsentRegistry.abi') as f:
-            contract_abi = json.load(f)
-        
-        self.contract = self.web3.eth.contract(
-            address=self.contract_address,
-            abi=contract_abi
-        )
-    
+        try:
+            # Initialize Web3
+            self.web3 = Web3(Web3.HTTPProvider(provider_url))
+            
+            # Convert contract address
+            if not isinstance(contract_address, str):
+                raise BlockchainError("Contract address must be a string")
+            self.contract_address = Address(bytes.fromhex(contract_address.replace('0x', '')))
+            self.private_key = private_key
+
+            # Load contract ABI
+            if not contract_abi:
+                raise BlockchainError("Contract ABI is required")
+            self.contract_abi = contract_abi['abi']
+
+            # Initialize contract
+            self.contract = self.web3.eth.contract(
+                address=self.contract_address,
+                abi=self.contract_abi
+            )
+        except Exception as e:
+            raise BlockchainError(f"Failed to initialize Ethereum client: {str(e)}")
+
+
     def store_agreement(self, agreement: 'ConsentAgreement') -> str:
         """Stores a consent agreement on the blockchain."""
         # Prepare transaction data
