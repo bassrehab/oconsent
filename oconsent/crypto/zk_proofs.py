@@ -1,46 +1,52 @@
-# oconsent/crypto/zk_proofs.py
-
 from typing import Dict, Optional
-import json
-from dataclasses import asdict
 from hashlib import sha256
-import zk_snark_client  # This would be a hypothetical ZK-SNARK library
+import json
 
 class ProofGenerator:
     """Handles zero-knowledge proof generation and verification."""
     
-    def __init__(self, snark_params_path: str):
-        self.snark_client = zk_snark_client.Client(snark_params_path)
+    def __init__(self, snark_params_path: Optional[str] = None):
+        self.snark_params_path = snark_params_path
         
     def generate_consent_proof(self, agreement: 'ConsentAgreement') -> str:
-        """Generates a zero-knowledge proof for a consent agreement."""
-        # Create witness for the proof
-        witness = self._create_witness(agreement)
+        """Generates a zero-knowledge proof for a consent agreement.
         
-        # Generate the proof
-        proof = self.snark_client.generate_proof(
-            circuit="consent_validity",
-            witness=witness
-        )
+        For testing/demo purposes, this creates a simple hash-based proof.
+        In production, this would use actual ZK-SNARK proofs.
+        """
+        proof_data = {
+            'agreement_id': agreement.id,
+            'subject_id': agreement.subject_id,
+            'processor_id': agreement.processor_id,
+            'timestamp': str(agreement.valid_from.timestamp())
+        }
         
-        return json.dumps(proof)
+        # Create a simple hash-based proof for testing
+        proof = sha256(json.dumps(proof_data, sort_keys=True).encode()).hexdigest()
+        
+        return proof
     
     def verify_consent_proof(self, agreement: 'ConsentAgreement') -> bool:
-        """Verifies a zero-knowledge proof for a consent agreement."""
+        """Verifies a zero-knowledge proof for a consent agreement.
+        
+        For testing/demo purposes, this recreates and verifies the hash.
+        In production, this would verify actual ZK-SNARK proofs.
+        """
         if not agreement.proof_id:
             return False
             
-        try:
-            proof = json.loads(agreement.proof_id)
-            public_inputs = self._create_public_inputs(agreement)
-            
-            return self.snark_client.verify_proof(
-                circuit="consent_validity",
-                proof=proof,
-                public_inputs=public_inputs
-            )
-        except Exception:
-            return False
+        # Recreate proof for verification
+        proof_data = {
+            'agreement_id': agreement.id,
+            'subject_id': agreement.subject_id,
+            'processor_id': agreement.processor_id,
+            'timestamp': str(agreement.valid_from.timestamp())
+        }
+        
+        verification_proof = sha256(json.dumps(proof_data, sort_keys=True).encode()).hexdigest()
+        
+        return verification_proof == agreement.proof_id
+    
     
     def _create_witness(self, agreement: 'ConsentAgreement') -> Dict:
         """Creates a witness for the ZK-SNARK proof."""
