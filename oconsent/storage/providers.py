@@ -1,9 +1,39 @@
+# oconsent/storage/providers.py
+
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, BinaryIO
+from typing import Optional, Dict, Any, BinaryIO, Union
 import json
-import ipfsapi
 import requests
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 from pathlib import Path
+import ipfshttpclient
+import time
+from functools import wraps
+from concurrent.futures import ThreadPoolExecutor
+
+from oconsent.utils.errors import (
+    StorageError, IPFSError, IPFSConnectionError,
+    IPFSPinningError, IPFSTimeoutError
+)
+
+def retry_operation(retries=3, backoff_factor=0.3):
+    """Decorator for retrying operations with exponential backoff."""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_error = None
+            for attempt in range(retries):
+                try:
+                    return func(*args, **kwargs)
+                except (requests.exceptions.RequestException, IPFSError) as e:
+                    last_error = e
+                    if attempt == retries - 1:
+                        raise
+                    time.sleep(backoff_factor * (2 ** attempt))
+            raise last_error
+        return wrapper
+    return decorator
 
 class StorageProvider(ABC):
     """Abstract base class for storage providers."""
@@ -24,166 +54,213 @@ class StorageProvider(ABC):
         pass
 
 class IPFSStorageProvider(StorageProvider):
-    """IPFS storage provider implementation."""
+    """Enhanced IPFS storage provider implementation."""
+    
+    DEFAULT_TIMEOUT = 30  # seconds
+    MAX_RETRIES = 3
+    CHUNK_SIZE = 1024 * 1024  # 1MB chunks for streaming
     
     def __init__(
         self,
         gateway_url: str = "https://ipfs.io",
         ipfs_node: Optional[str] = None,
         pinning_service: Optional[str] = None,
-        pinning_key: Optional[str] = None
+        pinning_key: Optional[str] = None,
+        timeout: int = DEFAULT_TIMEOUT,
+        max_retries: int = MAX_RETRIES,
+        max_workers: int = 4
     ):
         self.gateway_url = gateway_url.rstrip('/')
         self.ipfs_node = ipfs_node
         self.pinning_service = pinning_service
         self.pinning_key = pinning_key
+        self.timeout = timeout
+        self.max_retries = max_retries
+        
+        # Set up connection pooling
+        self.session = self._create_session()
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
         
         if ipfs_node:
-            self.client = ipfsapi.connect(ipfs_node)
+            try:
+                self.client = ipfshttpclient.connect(
+                    ipfs_node,
+                    session=self.session
+                )
+            except Exception as e:
+                raise IPFSConnectionError(f"Failed to connect to IPFS node: {e}")
         else:
             self.client = None
-    
-    def store(self, data: bytes, **kwargs) -> str:
-        """Stores data on IPFS."""
-        if self.client:
-            # Store using local node
-            result = self.client.add_bytes(data)
-            ipfs_hash = result['Hash']
-        else:
-            # Store using gateway
-            files = {'file': data}
-            response = requests.post(
-                f"{self.gateway_url}/api/v0/add",
-                files=files
-            )
-            response.raise_for_status()
-            ipfs_hash = response.json()['Hash']
-        
-        # Pin if pinning service is configured
-        if self.pinning_service and self.pinning_key:
-            self._pin_hash(ipfs_hash)
-        
-        return f"ipfs://{ipfs_hash}"
-    
-    def retrieve(self, reference: str) -> bytes:
-        """Retrieves data from IPFS."""
-        if not reference.startswith('ipfs://'):
-            raise ValueError("Invalid IPFS reference")
-            
-        ipfs_hash = reference[7:]
-        
-        if self.client:
-            # Retrieve using local node
-            return self.client.cat(ipfs_hash)
-        else:
-            # Retrieve using gateway
-            response = requests.get(f"{self.gateway_url}/ipfs/{ipfs_hash}")
-            response.raise_for_status()
-            return response.content
-    
-    def delete(self, reference: str) -> bool:
-        """'Deletes' data from IPFS (unpins it)."""
-        if not reference.startswith('ipfs://'):
-            raise ValueError("Invalid IPFS reference")
-            
-        ipfs_hash = reference[7:]
-        
-        if self.client:
-            try:
-                self.client.pin.rm(ipfs_hash)
-                return True
-            except:
-                return False
-                
-        if self.pinning_service and self.pinning_key:
-            return self._unpin_hash(ipfs_hash)
-            
-        return False
-    
-    def _pin_hash(self, ipfs_hash: str) -> bool:
-        """Pins an IPFS hash using the configured pinning service."""
-        headers = {'Authorization': f'Bearer {self.pinning_key}'}
-        response = requests.post(
-            f"{self.pinning_service}/pin/{ipfs_hash}",
-            headers=headers
-        )
-        return response.status_code == 200
-    
-    def _unpin_hash(self, ipfs_hash: str) -> bool:
-        """Unpins an IPFS hash from the pinning service."""
-        headers = {'Authorization': f'Bearer {self.pinning_key}'}
-        response = requests.delete(
-            f"{self.pinning_service}/pin/{ipfs_hash}",
-            headers=headers
-        )
-        return response.status_code == 200
 
-class LocalStorageProvider(StorageProvider):
-    """Local filesystem storage provider implementation."""
-    
-    def __init__(self, base_path: str):
-        self.base_path = Path(base_path)
-        self.base_path.mkdir(parents=True, exist_ok=True)
-    
-    def store(self, data: bytes, filename: Optional[str] = None, **kwargs) -> str:
-        """Stores data in the local filesystem."""
-        if not filename:
-            import uuid
-            filename = str(uuid.uuid4())
+    def _create_session(self) -> requests.Session:
+        """Creates a session with retry and timeout configuration."""
+        session = requests.Session()
         
-        file_path = self.base_path / filename
-        with open(file_path, 'wb') as f:
-            f.write(data)
+        retry_strategy = Retry(
+            total=self.max_retries,
+            backoff_factor=0.3,
+            status_forcelist=[500, 502, 503, 504]
+        )
         
-        return f"local://{filename}"
-    
+        adapter = HTTPAdapter(
+            max_retries=retry_strategy,
+            pool_connections=10,
+            pool_maxsize=100
+        )
+        
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        return session
+
+    @retry_operation()
+    def store(self, data: bytes, **kwargs) -> str:
+        """Stores data on IPFS with retries and error handling."""
+        try:
+            if self.client:
+                # Store using local node
+                result = self.client.add_bytes(
+                    data,
+                    pin=True,
+                    **kwargs
+                )
+                ipfs_hash = result['Hash']
+            else:
+                # Store using gateway
+                files = {'file': data}
+                response = self.session.post(
+                    f"{self.gateway_url}/api/v0/add",
+                    files=files,
+                    timeout=self.timeout
+                )
+                response.raise_for_status()
+                ipfs_hash = response.json()['Hash']
+
+            # Asynchronously pin if pinning service is configured
+            if self.pinning_service and self.pinning_key:
+                self.executor.submit(self._pin_hash, ipfs_hash)
+
+            return f"ipfs://{ipfs_hash}"
+            
+        except requests.exceptions.Timeout:
+            raise IPFSTimeoutError("IPFS storage operation timed out")
+        except Exception as e:
+            raise IPFSError(f"Failed to store data on IPFS: {e}")
+
+    @retry_operation()
     def retrieve(self, reference: str) -> bytes:
-        """Retrieves data from the local filesystem."""
-        if not reference.startswith('local://'):
-            raise ValueError("Invalid local reference")
+        """Retrieves data from IPFS with streaming support."""
+        if not reference.startswith('ipfs://'):
+            raise ValueError("Invalid IPFS reference")
             
-        filename = reference[8:]
-        file_path = self.base_path / filename
-        
-        if not file_path.exists():
-            raise FileNotFoundError(f"File {filename} not found")
-            
-        with open(file_path, 'rb') as f:
-            return f.read()
-    
-    def delete(self, reference: str) -> bool:
-        """Deletes data from the local filesystem."""
-        if not reference.startswith('local://'):
-            raise ValueError("Invalid local reference")
-            
-        filename = reference[8:]
-        file_path = self.base_path / filename
+        ipfs_hash = reference[7:]
         
         try:
-            file_path.unlink()
-            return True
-        except:
-            return False
+            if self.client:
+                return self.client.cat(ipfs_hash)
+            else:
+                response = self.session.get(
+                    f"{self.gateway_url}/ipfs/{ipfs_hash}",
+                    timeout=self.timeout,
+                    stream=True
+                )
+                response.raise_for_status()
+                
+                # Stream response content
+                chunks = []
+                for chunk in response.iter_content(chunk_size=self.CHUNK_SIZE):
+                    if chunk:
+                        chunks.append(chunk)
+                return b''.join(chunks)
+                
+        except requests.exceptions.Timeout:
+            raise IPFSTimeoutError("IPFS retrieval operation timed out")
+        except Exception as e:
+            raise IPFSError(f"Failed to retrieve data from IPFS: {e}")
 
-class StorageProviderFactory:
-    """Factory for creating storage provider instances."""
-    
-    @staticmethod
-    def create_provider(config: Dict[str, Any]) -> StorageProvider:
-        """Creates a storage provider based on configuration."""
-        provider_type = config.get('provider', 'ipfs').lower()
+    @retry_operation()
+    def delete(self, reference: str) -> bool:
+        """'Deletes' data from IPFS (unpins it) with retries."""
+        if not reference.startswith('ipfs://'):
+            raise ValueError("Invalid IPFS reference")
+            
+        ipfs_hash = reference[7:]
         
-        if provider_type == 'ipfs':
-            return IPFSStorageProvider(
-                gateway_url=config.get('ipfs_gateway', 'https://ipfs.io'),
-                ipfs_node=config.get('ipfs_node'),
-                pinning_service=config.get('pinning_service'),
-                pinning_key=config.get('pinning_key')
+        try:
+            if self.client:
+                self.client.pin.rm(ipfs_hash)
+                return True
+                
+            if self.pinning_service and self.pinning_key:
+                return self._unpin_hash(ipfs_hash)
+                
+            return False
+            
+        except Exception as e:
+            raise IPFSError(f"Failed to unpin data from IPFS: {e}")
+
+    @retry_operation(retries=2)
+    def _pin_hash(self, ipfs_hash: str) -> bool:
+        """Pins an IPFS hash using the configured pinning service."""
+        try:
+            headers = {
+                'Authorization': f'Bearer {self.pinning_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            # Support for different pinning services
+            if 'pinata' in self.pinning_service.lower():
+                data = {'hashToPin': ipfs_hash}
+            else:
+                data = {'cid': ipfs_hash}
+                
+            response = self.session.post(
+                f"{self.pinning_service}/pin/{ipfs_hash}",
+                headers=headers,
+                json=data,
+                timeout=self.timeout
             )
-        elif provider_type == 'local':
-            return LocalStorageProvider(
-                base_path=config.get('base_path', '/tmp/oconsent')
+            
+            if not response.ok:
+                raise IPFSPinningError(f"Failed to pin hash: {response.text}")
+                
+            return True
+            
+        except requests.exceptions.Timeout:
+            raise IPFSTimeoutError("Pinning operation timed out")
+        except Exception as e:
+            raise IPFSPinningError(f"Failed to pin hash: {e}")
+
+    @retry_operation(retries=2)
+    def _unpin_hash(self, ipfs_hash: str) -> bool:
+        """Unpins an IPFS hash with retries."""
+        try:
+            headers = {
+                'Authorization': f'Bearer {self.pinning_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            response = self.session.delete(
+                f"{self.pinning_service}/pin/{ipfs_hash}",
+                headers=headers,
+                timeout=self.timeout
             )
-        else:
-            raise ValueError(f"Unknown storage provider type: {provider_type}")
-        
+            
+            if not response.ok:
+                raise IPFSPinningError(f"Failed to unpin hash: {response.text}")
+                
+            return True
+            
+        except requests.exceptions.Timeout:
+            raise IPFSTimeoutError("Unpinning operation timed out")
+        except Exception as e:
+            raise IPFSPinningError(f"Failed to unpin hash: {e}")
+
+    def __del__(self):
+        """Cleanup resources."""
+        if hasattr(self, 'executor'):
+            self.executor.shutdown(wait=False)
+        if hasattr(self, 'session'):
+            self.session.close()
+        if hasattr(self, 'client') and self.client:
+            self.client.close()
+            

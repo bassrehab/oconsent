@@ -60,12 +60,20 @@ oconsent/
 │   └── scripts/
 │       └── deploy.js        # Deployment script
 │
-├── tests/                   # Python package tests
+├── tests/ # Python package tests
+│   ├── integration/
+│   │   ├── __init__.py
+│   │   ├── test_blockchain_integration.py
+│   │   └── test_consent_integration.py               
+│   ├── unit/
+│   │   ├── __init__.py
+│   │   ├── test_blockchain.py
+│   │   ├── test_consent.py
+│   │   ├── test_crypto.py
+│   │   └── test_storage.py      
 │   ├── __init__.py
-│   ├── test_consent.py
-│   ├── test_blockchain.py
-│   ├── test_crypto.py
-│   └── test_storage.py
+│   ├── .env.test
+│   └── confttest.py
 │
 ├── docs/                    # Documentation
 │   ├── source/
